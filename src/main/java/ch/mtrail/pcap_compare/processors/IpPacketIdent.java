@@ -1,14 +1,13 @@
-package ch.mtrail.pcap_compare;
+package ch.mtrail.pcap_compare.processors;
 
-import java.util.Arrays;
 import java.util.Objects;
 
 public class IpPacketIdent {
 	private final Integer id;
-	private final byte[] hash;
+	private final String hash;
 	private final long ts;
 
-	public IpPacketIdent(Integer id, byte[] hash, long ts) {
+	public IpPacketIdent(Integer id, String hash, long ts) {
 		this.id = id;
 		this.hash = hash;
 		this.ts = ts;
@@ -18,7 +17,7 @@ public class IpPacketIdent {
 		return id;
 	}
 
-	public byte[] getHash() {
+	public String getHash() {
 		return hash;
 	}
 
@@ -31,13 +30,13 @@ public class IpPacketIdent {
 		if (this == o) return true;
 		if (o == null || getClass() != o.getClass()) return false;
 		IpPacketIdent that = (IpPacketIdent) o;
-		return Objects.equals(id, that.id) && Arrays.equals(hash, that.hash);
+		return Objects.equals(id, that.id) && Objects.equals(hash, that.hash);
 	}
 
 	@Override
 	public int hashCode() {
 		int result = Objects.hash(id);
-		result = 31 * result + Arrays.hashCode(hash);
+		result = 31 * result + hash.hashCode();
 		return result;
 	}
 }

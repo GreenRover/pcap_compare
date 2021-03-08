@@ -1,32 +1,21 @@
-package ch.mtrail.pcap_compare;
+package ch.mtrail.pcap_compare.processors;
 
-import java.io.EOFException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.NumberFormat;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Formatter;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import org.pcap4j.core.NotOpenException;
-import org.pcap4j.core.PcapHandle;
 import org.pcap4j.core.PcapNativeException;
-import org.pcap4j.core.Pcaps;
 import org.pcap4j.packet.IpV4Packet;
-import org.pcap4j.packet.Packet;
-import org.pcap4j.packet.TcpPacket;
-import org.pcap4j.packet.UdpPacket;
 
 public class PcapComparator {
 
@@ -43,15 +32,18 @@ public class PcapComparator {
 		this.pcapFileB = pcapFileB;
 		this.destIp = InetAddress.getByName(destIp);
 
-		Locale locale = new Locale("de", "CH");
-		numberFormat = NumberFormat.getInstance(locale);
+		numberFormat = Utils.getNumberFormatter();
 	}
 
 	public void diff() throws PcapNativeException, NotOpenException, NoSuchAlgorithmException {
 
+		Predicate<IpV4Packet.IpV4Header> ipFilter = ipHeader ->
+				Objects.equals(ipHeader.getSrcAddr(), sourceIp) &&
+				Objects.equals(ipHeader.getDstAddr(), destIp);
+
 		PcapIpPacketDiffer differ = new PcapIpPacketDiffer(
-				readPcapFile(pcapFileA),
-				readPcapFile(pcapFileB)
+				PcapReader.readPcapFile(pcapFileA, ipFilter),
+				PcapReader.readPcapFile(pcapFileB, ipFilter)
 		);
 		differ.compareA2B();
 		differ.compareB2A();
@@ -64,82 +56,36 @@ public class PcapComparator {
 				System.out.println("\t" + key + " = " + numberFormat.format(value)));
 	}
 
-	private Map<String, List<IpPacketIdent>> readPcapFile(String pcapFile) throws PcapNativeException, NotOpenException, NoSuchAlgorithmException {
-		PcapHandle handle = Pcaps.openOffline(pcapFile);
-
-		MessageDigest md = MessageDigest.getInstance("SHA-1");
-
-		Map<String, List<IpPacketIdent>> packages = new HashMap<>();
-		while (true) {
-			try {
-				Packet packet = handle.getNextPacketEx();
-				IpV4Packet ipPacket = packet.get(IpV4Packet.class);
-
-				if (!Objects.equals(ipPacket.getHeader().getSrcAddr(), sourceIp) ||
-					!Objects.equals(ipPacket.getHeader().getDstAddr(), destIp)) {
-					continue;
-				}
-
-				Integer id = ipPacket.getHeader().getIdentificationAsInt();
-				byte[] hash;
-				if (ipPacket.getPayload() instanceof UdpPacket) {
-					UdpPacket udpPacket = ipPacket.get(UdpPacket.class);
-					hash = md.digest(udpPacket.getPayload().getRawData());
-				} else if (ipPacket.getPayload() instanceof TcpPacket) {
-					TcpPacket tcpPacket = ipPacket.get(TcpPacket.class);
-					hash = md.digest(tcpPacket.getPayload().getRawData());
-				} else {
-					continue;
-				}
-
-				long ts = handle.getTimestamp().getTime();
-
-				packages
-						.computeIfAbsent(id + "_" + byteArray2Hex(hash), _id -> new ArrayList<>())
-						.add(new IpPacketIdent(id, hash, ts));
-
-			} catch (TimeoutException e) {
-				// continue;
-			} catch (EOFException e) {
-				break;
-			}
-		}
-
-		return packages;
-	}
-
-	private static String byteArray2Hex(final byte[] hash) {
-		Formatter formatter = new Formatter();
-		for (byte b : hash) {
-			formatter.format("%02x", b);
-		}
-		return formatter.toString();
-	}
-
 	private static class PcapIpPacketDiffer {
 		private final Map<String, List<IpPacketIdent>> packagesA;
 		private final Map<String, List<IpPacketIdent>> packagesB;
-		private final Map<byte[], IpPacketIdent> packagesAByHash;
-		private final Map<byte[], IpPacketIdent> packagesBByHash;
+		private final Map<String, List<IpPacketIdent>> packagesAByHash;
+		private final Map<String, List<IpPacketIdent>> packagesBByHash;
 
 		private final Map<String, AtomicInteger> counter = new HashMap<>();
 
-		PcapIpPacketDiffer(Map<String, List<IpPacketIdent>> packagesA, Map<String, List<IpPacketIdent>> packagesB) {
-			this.packagesA = packagesA;
-			this.packagesB = packagesB;
-
-			packagesAByHash = packagesA.values().stream()
-					.flatMap(List::stream)
-					.collect(Collectors.toMap(
-							IpPacketIdent::	getHash,
-							Function.identity()
+		PcapIpPacketDiffer(List<IpPacketIdent> packagesA, List<IpPacketIdent> packagesB) {
+			this.packagesA = packagesA.stream()
+					.collect(Collectors.groupingBy(
+							p -> p.getId() + "_" + p.getHash(),
+							Collectors.toList()
+					));
+			this.packagesB = packagesB.stream()
+					.collect(Collectors.groupingBy(
+							p -> p.getId() + "_" + p.getHash(),
+							Collectors.toList()
 					));
 
-			packagesBByHash = packagesB.values().stream()
-					.flatMap(List::stream)
-					.collect(Collectors.toMap(
+			packagesAByHash = packagesA.stream()
+					.collect(Collectors.groupingBy(
+							IpPacketIdent::getHash,
+							Collectors.toList()
+					));
+
+			packagesBByHash = packagesB.stream()
+					.collect(Collectors.groupingBy(
 							IpPacketIdent::	getHash,
-							Function.identity()
+							Collectors.toList()
 					));
 		}
 
@@ -184,10 +130,11 @@ public class PcapComparator {
 			// There is package in receiving pcap matching this submitted package.
 			// Try to detect package with same content (hash based) but different ip id.
 			for (IpPacketIdent packageA : packagesA.getValue()) {
-				IpPacketIdent packageB = packagesBByHash.get(packageA.getHash());
-				if (packageB != null) {
-					System.out.println("ID changed A: " + packagesA.getKey() + " => " + packageB.getId());
-					counter.computeIfAbsent("id_changed_a", id -> new AtomicInteger()).incrementAndGet();
+				List<IpPacketIdent> packagesB = packagesBByHash.get(packageA.getHash());
+				if (packagesB != null) {
+					packagesB.forEach(packageB -> System.out.println("ID changed A: " + packagesA.getKey() + " => " + packageB.getId()));
+
+					counter.computeIfAbsent("id_changed", id -> new AtomicInteger()).addAndGet(packagesB.size());
 				} else {
 					System.out.println("Missing: " + packagesA.getKey());
 					counter.computeIfAbsent("missing", id -> new AtomicInteger()).incrementAndGet();
@@ -200,7 +147,7 @@ public class PcapComparator {
 				List<IpPacketIdent> packagesA = this.packagesA.get(packagesB.getKey());
 				if (packagesA == null) {
 					for (IpPacketIdent packageB : packagesB.getValue()) {
-						IpPacketIdent packageA = packagesAByHash.get(packageB.getHash());
+						List<IpPacketIdent> packageA = packagesAByHash.get(packageB.getHash());
 
 						if (packageA == null) {
 							// Find really no matching submitted package.
