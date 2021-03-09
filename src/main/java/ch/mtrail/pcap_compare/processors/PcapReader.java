@@ -40,6 +40,7 @@ public class PcapReader {
 
 				Integer id = ipPacket.getHeader().getIdentificationAsInt();
 				byte[] hash;
+				md.reset();
 				if (ipPacket.getPayload() instanceof UdpPacket) {
 					UdpPacket udpPacket = ipPacket.get(UdpPacket.class);
 					hash = md.digest(udpPacket.getPayload().getRawData());
