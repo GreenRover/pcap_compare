@@ -4,12 +4,12 @@ import java.util.Objects;
 
 public class IpPacketIdent {
 	private final Integer id;
-	private final String hash;
+	private final String payloadHash;
 	private final long ts;
 
 	public IpPacketIdent(Integer id, String hash, long ts) {
 		this.id = id;
-		this.hash = hash;
+		this.payloadHash = hash;
 		this.ts = ts;
 	}
 
@@ -17,8 +17,8 @@ public class IpPacketIdent {
 		return id;
 	}
 
-	public String getHash() {
-		return hash;
+	public String getPayloadHash() {
+		return payloadHash;
 	}
 
 	public long getTs() {
@@ -30,13 +30,13 @@ public class IpPacketIdent {
 		if (this == o) return true;
 		if (o == null || getClass() != o.getClass()) return false;
 		IpPacketIdent that = (IpPacketIdent) o;
-		return Objects.equals(id, that.id) && Objects.equals(hash, that.hash);
+		return Objects.equals(id, that.id) && Objects.equals(payloadHash, that.payloadHash);
 	}
 
 	@Override
 	public int hashCode() {
 		int result = Objects.hash(id);
-		result = 31 * result + hash.hashCode();
+		result = 31 * result + payloadHash.hashCode();
 		return result;
 	}
 }

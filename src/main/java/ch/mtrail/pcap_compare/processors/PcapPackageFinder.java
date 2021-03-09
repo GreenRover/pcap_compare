@@ -47,15 +47,15 @@ public class PcapPackageFinder {
 		}
 		matchingPackages.forEach(matchingPackage -> {
 			System.out.println("\t" + matchingPackage.getId() + " payload sha1 hash:" + matchingPackage
-					.getHash() + " ts:" + matchingPackage.getTs());
-			hashes.add(matchingPackage.getHash());
+					.getPayloadHash() + " ts:" + matchingPackage.getTs());
+			hashes.add(matchingPackage.getPayloadHash());
 		});
 		return hashes;
 	}
 
 	private void findByIpHash(List<IpPacketIdent> packages, Set<String> hashes) {
 		List<IpPacketIdent> matchingPackages = packages.stream()
-				.filter(p -> hashes.contains(p.getHash()))
+				.filter(p -> hashes.contains(p.getPayloadHash()))
 				.collect(Collectors.toList());
 
 		if (matchingPackages.isEmpty()) {
@@ -64,7 +64,7 @@ public class PcapPackageFinder {
 		}
 		matchingPackages.forEach(matchingPackage -> {
 			System.out.println("\t" + matchingPackage.getId() + " payload sha1 hash:" + matchingPackage
-					.getHash() + " ts:" + matchingPackage.getTs());
+					.getPayloadHash() + " ts:" + matchingPackage.getTs());
 		});
 	}
 

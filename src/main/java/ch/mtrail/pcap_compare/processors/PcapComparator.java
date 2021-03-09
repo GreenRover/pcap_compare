@@ -47,13 +47,21 @@ public class PcapComparator {
 		);
 		differ.compareA2B();
 		differ.compareB2A();
+		differ.detectDoubleTransmission();
+
+		int packagesACount = differ.getPackagesA().values().stream().mapToInt(Collection::size).sum();
+		int packagesBCount = differ.getPackagesB().values().stream().mapToInt(Collection::size).sum();
 
 		System.out.println("Packages: "
-				+ "A=" +  numberFormat.format(differ.getPackagesA().values().stream().mapToInt(Collection::size).sum()) +
-				", B=" +  numberFormat.format(differ.getPackagesB().values().stream().mapToInt(Collection::size).sum()));
+				+ "A=" +  numberFormat.format(packagesACount) +
+				", B=" +  numberFormat.format(packagesBCount));
 		System.out.println("Counter: ");
-		differ.getCounter().forEach((key, value) ->
-				System.out.println("\t" + key + " = " + numberFormat.format(value)));
+		differ.getCounter().forEach((key, value) -> System.out.printf(
+				"\t%s = %s | %.3f%%%n",
+				key,
+				numberFormat.format(value),
+				(double)value.get() / (double)packagesACount * 100d
+			));
 	}
 
 	private static class PcapIpPacketDiffer {
@@ -67,24 +75,24 @@ public class PcapComparator {
 		PcapIpPacketDiffer(List<IpPacketIdent> packagesA, List<IpPacketIdent> packagesB) {
 			this.packagesA = packagesA.stream()
 					.collect(Collectors.groupingBy(
-							p -> p.getId() + "_" + p.getHash(),
+							p -> p.getId() + "_" + p.getPayloadHash(),
 							Collectors.toList()
 					));
 			this.packagesB = packagesB.stream()
 					.collect(Collectors.groupingBy(
-							p -> p.getId() + "_" + p.getHash(),
+							p -> p.getId() + "_" + p.getPayloadHash(),
 							Collectors.toList()
 					));
 
 			packagesAByHash = packagesA.stream()
 					.collect(Collectors.groupingBy(
-							IpPacketIdent::getHash,
+							IpPacketIdent::getPayloadHash,
 							Collectors.toList()
 					));
 
 			packagesBByHash = packagesB.stream()
 					.collect(Collectors.groupingBy(
-							IpPacketIdent::	getHash,
+							IpPacketIdent::getPayloadHash,
 							Collectors.toList()
 					));
 		}
@@ -104,12 +112,18 @@ public class PcapComparator {
 					continue;
 				}
 
-				// ####### Really rare edge case #######
+				if (packagesA.getValue().size() >= 1
+						&&  packagesA.getValue().size() == packagesB.size()
+						&& Objects.equals(
+								packagesA.getValue().get(0).getPayloadHash(),
+								packagesB.get(0).getPayloadHash())
+					) {
 
-				if (packagesA.getValue().size() >= 1 && packagesA.getValue().size() == packagesB.size()) {
 					counter.computeIfAbsent("ok", id -> new AtomicInteger()).addAndGet(packagesB.size());
 					continue;
 				}
+
+				// ####### Really rare edge case #######
 
 				if (packagesA.getValue().size() > packagesB.size()) {
 					// Same package was multiple times but no all was transmitted.
@@ -130,7 +144,7 @@ public class PcapComparator {
 			// There is package in receiving pcap matching this submitted package.
 			// Try to detect package with same content (hash based) but different ip id.
 			for (IpPacketIdent packageA : packagesA.getValue()) {
-				List<IpPacketIdent> packagesB = packagesBByHash.get(packageA.getHash());
+				List<IpPacketIdent> packagesB = packagesBByHash.get(packageA.getPayloadHash());
 				if (packagesB != null) {
 					packagesB.forEach(packageB -> System.out.println("ID changed A: " + packagesA.getKey() + " => " + packageB.getId()));
 
@@ -147,7 +161,7 @@ public class PcapComparator {
 				List<IpPacketIdent> packagesA = this.packagesA.get(packagesB.getKey());
 				if (packagesA == null) {
 					for (IpPacketIdent packageB : packagesB.getValue()) {
-						List<IpPacketIdent> packageA = packagesAByHash.get(packageB.getHash());
+						List<IpPacketIdent> packageA = packagesAByHash.get(packageB.getPayloadHash());
 
 						if (packageA == null) {
 							// Find really no matching submitted package.
@@ -161,6 +175,21 @@ public class PcapComparator {
 					}
 				}
 			}
+		}
+
+		void detectDoubleTransmission() {
+			packagesAByHash.forEach((hash, packages) -> {
+				if (packages.size() > 1) {
+					System.out.println("submitted " + packages.size() + " times: " + hash);
+					counter.computeIfAbsent("multi_submitted", id -> new AtomicInteger()).addAndGet(packages.size());
+				}
+			});
+			packagesBByHash.forEach((hash, packages) -> {
+				if (packages.size() > 1) {
+					System.out.println("received " + packages.size() + " times: " + hash);
+					counter.computeIfAbsent("multi_received", id -> new AtomicInteger()).addAndGet(packages.size());
+				}
+			});
 		}
 
 		Map<String, List<IpPacketIdent>> getPackagesA() {

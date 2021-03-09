@@ -3,6 +3,15 @@
 You can run tcpdump on 2 computer. A sending and a receiving one.
 This tool helps you to diff the dump/pcap file to find what is lost while transport.
 
+### How to collect data
+```
+tcpdump -i eno1 -s 0 -w /tmp/`hostname`.tcpdump port not 22
+```
+
+Those data have to be converted.  
+Use wireshark open the tcpdump file.  
+Save as "Wireshark/tcpdump/.. - pcap"
+
 ## Diff pcap files
 
 ```bash
